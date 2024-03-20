@@ -18,24 +18,20 @@ import paho.mqtt.client as mqtt
 import json
 import math
 
-RS485Port = '/dev/serial/by-path/platform-3f980000.usb-usb-0:1.2:1.0-port0' # Smartmeter
-
-
 MQTT_Settings = {
-	"Server":	"10.10.98.71",
+	"Server":	"localhost",
 	"Port":     	1883,
-	"AMS_Topic":	"powermeter",
+	"AMS_Topic": "SMA-EM/status/3007888642"
 	}
 	
 	
 	
 #--------------------------------------------------
-em1 = dtsu666Emulator(
-	device=RS485Port
-)
+em1 = dtsu666Emulator()
 
 em1.startserver()
 logging.info('smartmeter started...')
+data = { "U1": 230, "U2": 230, "U3": 230, "PF": 1, "frequency": 50, "pconsume": 0, "tPI": 0, "tPO": 0 }
 
 
 #============================================================================
@@ -47,14 +43,30 @@ def mqtt_on_connect(client, userdata, flags, rc):
 	# Subscribing in on_connect() means that if we lose the connection and
 	# reconnect then subscriptions will be renewed.
 	client.subscribe(MQTT_Settings['AMS_Topic']+"/#")
+	#em1.update({"SWVer": 100, "UCode": 1, "Phases": 1, "Comm": 3, "Addr": 4, "Parity": 5})
 
 
 # The callback for when a PUBLISH message is received from the server.
 def mqtt_on_message(client, userdata, msg):
 #	print(msg.topic)
+	global data
 
-	if msg.topic == MQTT_Settings['AMS_Topic']+"/power":
-		d = json.loads(msg.payload.decode("utf-8"))
+	if msg.topic == MQTT_Settings['AMS_Topic']+"/u1":
+		data['U1'] = float(msg.payload)
+	elif msg.topic == MQTT_Settings['AMS_Topic']+"/u2":
+		data['U2'] = float(msg.payload)
+	elif msg.topic == MQTT_Settings['AMS_Topic']+"/u3":
+		data['U3'] = float(msg.payload)
+	elif msg.topic == MQTT_Settings['AMS_Topic']+"/cosphi":
+		data['PF'] = float(msg.payload)
+	elif msg.topic == MQTT_Settings['AMS_Topic']+"/frequency":
+		data['frequency'] = float(msg.payload)
+	elif msg.topic == MQTT_Settings['AMS_Topic']+"/pconsume":
+		data['pconsume'] = float(msg.payload)
+	elif msg.topic == MQTT_Settings['AMS_Topic']+"/psupply":
+		d = data
+		d['P'] = data['pconsume'] - float(msg.payload)
+		d['PO'] = 0
 
 		P = d['P'] - d['PO']
 		S = P / d["PF"]
@@ -77,9 +89,9 @@ def mqtt_on_message(client, userdata, msg):
 			'Volts_BC':		Vab,
 			'Volts_CA':		Vab,
 
-			'Volts_L1':		U1,
-			'Volts_L2':		U1,
-			'Volts_L3':		U1,
+			'Volts_L1':		d['U1'],
+			'Volts_L2':		d['U2'],
+			'Volts_L3':		d['U3'],
 #			'Current_L1':		d['I1'],
 #			'Current_L2':		d['I2'],
 #			'Current_L3':		d['I3'],
@@ -106,21 +118,23 @@ def mqtt_on_message(client, userdata, msg):
 			'Total_System_Reactive_Power':	Q,
 			'DmPt': P,
 
-			"Frequency":	50,
+			"Frequency":	data['frequency'],
 			}
 
 
 		logging.info("..update power..")
-		logging.info(pp.pformat(Inverterdata))
+		#logging.info(pp.pformat(Inverterdata))
 		em1.update(Inverterdata)
 
 
-	elif msg.topic == MQTT_Settings['AMS_Topic']+"/energy":
-		d = json.loads(msg.payload.decode("utf-8"))
+	elif msg.topic == MQTT_Settings['AMS_Topic']+"/psupplycounter":
+		data['tPO'] = float(msg.payload)
+	elif msg.topic == MQTT_Settings['AMS_Topic']+"/pconsumecounter":
+		data['tPI'] = float(msg.payload)
 
 		Inverterdata = {
-			'Total_import_kwh':	d['tPI'],
-			'Total_export_kwh':	d['tPO'],
+			'Total_import_kwh':	data['tPI'],
+			'Total_export_kwh':	data['tPO'],
 			}
 
 		logging.info("..update energy..")
