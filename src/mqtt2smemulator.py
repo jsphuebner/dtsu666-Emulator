@@ -43,7 +43,6 @@ def mqtt_on_connect(client, userdata, flags, rc):
 	# Subscribing in on_connect() means that if we lose the connection and
 	# reconnect then subscriptions will be renewed.
 	client.subscribe(MQTT_Settings['AMS_Topic']+"/#")
-	#em1.update({"SWVer": 100, "UCode": 1, "Phases": 1, "Comm": 3, "Addr": 4, "Parity": 5})
 
 
 # The callback for when a PUBLISH message is received from the server.
@@ -59,6 +58,8 @@ def mqtt_on_message(client, userdata, msg):
 		data['U3'] = float(msg.payload)
 	elif msg.topic == MQTT_Settings['AMS_Topic']+"/cosphi":
 		data['PF'] = float(msg.payload)
+		if data['PF'] == 0:
+			data['PF'] = 1
 	elif msg.topic == MQTT_Settings['AMS_Topic']+"/frequency":
 		data['frequency'] = float(msg.payload)
 	elif msg.topic == MQTT_Settings['AMS_Topic']+"/pconsume":
@@ -66,9 +67,8 @@ def mqtt_on_message(client, userdata, msg):
 	elif msg.topic == MQTT_Settings['AMS_Topic']+"/psupply":
 		d = data
 		d['P'] = data['pconsume'] - float(msg.payload)
-		d['PO'] = 0
 
-		P = d['P'] - d['PO']
+		P = d['P']
 		S = P / d["PF"]
 		Q = math.sqrt(S**2 - P**2)
 
@@ -80,11 +80,6 @@ def mqtt_on_message(client, userdata, msg):
 		I = P / (U1 * d["PF"] * 3)
 
 		Inverterdata = {
-			# Cosinussatz: sqrt(a² + b² -2*a*b*cos(120°) )
-			# -2*cos(120°) = 1
-
-#			'Volts_AB':		math.sqrt( U1**2 + U2**2 + U1*U2),
-
 			'Volts_AB':		Vab,
 			'Volts_BC':		Vab,
 			'Volts_CA':		Vab,
@@ -92,9 +87,6 @@ def mqtt_on_message(client, userdata, msg):
 			'Volts_L1':		d['U1'],
 			'Volts_L2':		d['U2'],
 			'Volts_L3':		d['U3'],
-#			'Current_L1':		d['I1'],
-#			'Current_L2':		d['I2'],
-#			'Current_L3':		d['I3'],
 
 			'Current_L1':		I,
 			'Current_L2':		I,
@@ -114,12 +106,12 @@ def mqtt_on_message(client, userdata, msg):
 			'Reactive_Power_L3':	Q/3,
 
 			'Total_System_Active_Power':	P,
-	#		'Total_System_Apparent_Power':	Pn,
+#			'Total_System_Apparent_Power':	S,
 			'Total_System_Reactive_Power':	Q,
 			'DmPt': P,
 
-			"Frequency":	data['frequency'],
-			}
+			"Frequency":	d['frequency'],
+		}
 
 
 		logging.info("..update power..")
